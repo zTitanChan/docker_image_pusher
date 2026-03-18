@@ -1,2 +1,2 @@
-nalanzeyu/vllm-gfx906:latest
-ghcr.io/open-webui/open-webui:latest
+nalanzeyu/vllm-gfx906:v0.11.2-rocm6.3
+#ghcr.io/open-webui/open-webui:latest
