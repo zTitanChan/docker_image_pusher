@@ -30,17 +30,17 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Docker Setup Buildx
-      uses: docker/setup-buildx-action@v3
+    # 👇 安装 skopeo 工具
+    - name: Install skopeo
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y skopeo
 
     - name: Build and push image Aliyun
       run: |
-        # 👇 核心改动：关闭 BuildKit 默认的构建证明和 SBOM 附加信息
-        export BUILDX_NO_DEFAULT_ATTESTATIONS=1
-        
         docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
         
-        # 数据预处理,判断镜像是否重名
+        # 数据预处理,判断镜像是否重名 (与原脚本一致)
         declare -A duplicate_images
         declare -A temp_map
         while IFS= read -r line || [ -n "$line" ]; do
@@ -91,8 +91,10 @@ jobs:
             
             image_name_tag="${image_name_tag%%@*}"
             new_image="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$platform_prefix$name_space_prefix$image_name_tag"
-            docker tag $image $new_image
-            docker push $new_image
+            
+            # 👇 核心修改：使用 skopeo 替代 docker push，强制使用 v2s2 格式
+            echo "skopeo copy --format v2s2 docker://$image docker://$new_image --dest-creds $ALIYUN_REGISTRY_USER:$ALIYUN_REGISTRY_PASSWORD"
+            skopeo copy --format v2s2 docker://$image docker://$new_image --dest-creds $ALIYUN_REGISTRY_USER:$ALIYUN_REGISTRY_PASSWORD
             
             echo "开始清理磁盘空间"
             df -hT
