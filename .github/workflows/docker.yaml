@@ -5,7 +5,6 @@ on:
   push:
     branches: [ main ]
 
-
 env:
   ALIYUN_REGISTRY: "${{ secrets.ALIYUN_REGISTRY }}"
   ALIYUN_NAME_SPACE: "${{ secrets.ALIYUN_NAME_SPACE }}"
@@ -13,41 +12,22 @@ env:
   ALIYUN_REGISTRY_PASSWORD: "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}"
 
 jobs:
-
   build:
     name: Pull
     runs-on: ubuntu-latest
     steps:
-    - name: Before freeing up disk space
-      run: |
-        echo "Before freeing up disk space"
-        echo "=============================================================================="
-        df -hT
-        echo "=============================================================================="
-
-    # 增加可用磁盘空间
-    - name: Maximize build space
-      uses: easimon/maximize-build-space@master
+    # 👇 核心改动：放在第一步，强力清理系统盘里预装的没用的软件，释放 20-30GB 空间
+    # 因为 GitHub 最新的 Runner 使用 containerd，默认存在系统盘 /var/lib/containerd 中
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
       with:
-
-        root-reserve-mb: 2048
-        swap-size-mb: 128
-        remove-dotnet: 'true'
-        remove-haskell: 'true'
-        # 如果空间还是不够用，可以把以下开启，清理出更多空间
-        # remove-android: 'true'
-        # remove-codeql: 'true'
-        build-mount-path: '/var/lib/docker/'
-
-    - name: Restart docker
-      run: sudo service docker restart
-
-    - name: Free up disk space complete
-      run: |
-        echo "Free up disk space complete"
-        echo "=============================================================================="
-        df -hT
-        echo "=============================================================================="
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
 
     - name: Checkout Code
       uses: actions/checkout@v4
@@ -58,6 +38,7 @@ jobs:
     - name: Build and push image Aliyun
       run: |
         docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
+        
         # 数据预处理,判断镜像是否重名
         declare -A duplicate_images
         declare -A temp_map
@@ -97,7 +78,6 @@ jobs:
                 temp_map[$image_name]=$name_space
             fi       
         done < images.txt
-        
         
         while IFS= read -r line || [ -n "$line" ]; do
             # 忽略空行与注释
@@ -143,12 +123,15 @@ jobs:
             docker tag $image $new_image
             echo "docker push $new_image"
             docker push $new_image
+            
             echo "开始清理磁盘空间"
             echo "=============================================================================="
             df -hT
             echo "=============================================================================="
-            docker rmi $image
-            docker rmi $new_image
+            
+            # 👇 彻底清理拉取和推送产生的中间层和缓存
+            docker system prune -af --volumes
+            
             echo "磁盘空间清理完毕"
             echo "=============================================================================="
             df -hT
